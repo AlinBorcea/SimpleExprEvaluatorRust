@@ -1,151 +1,163 @@
 
-pub enum AlgType {
-    TwoStacks,
-    Polish,
-}
-
 pub struct Config<'a> {
-    expression: &'a str,
-    alg_type: AlgType,
+    expr: &'a str,
+    alg: &'a str,
 }
 
 impl<'a> Config<'a> {
-    pub fn new(args: &Vec<String>) -> Result<Config, &str> {
+    pub fn new(args: &mut Vec<String>) -> Result<Config, &str> {
         if args.len() < 3 {
             return Err("Two CLI arguments are needed: Expression AlgType");
         }
-        let expression = &args[1];
-        let alg_type = get_alg_type(&args[2]);
-
-        if let Err(e) = validate_expression(&expression) {
-            return Err(e);
+        if args[1].len() < 3 {
+            return Err("The expression must have at least 3 members!");
         }
 
-        Ok(Config { expression, alg_type })
+        args[1].insert(0, '#');
+        args[1].push('#');
+
+        let expr = &args[1];
+        let alg: &str;
+
+        if args[2] == "TwoStacks" {
+            alg = &args[2];
+        
+        } else if args[2] == "Polish" {
+            alg = &args[2];
+        
+        } else {
+            alg = "TwoStacks";
+        }
+
+        Ok(Config { expr, alg })
     }
 
     pub fn expression(&self) -> &str {
-        self.expression
+        self.expr
     }
 
     pub fn alg_type(&self) -> &str {
-        match self.alg_type {
-            AlgType::TwoStacks => "TwoStacks",
-            AlgType::Polish => "Polish",
+        self.alg
+    }
+
+}
+
+pub mod two_stacks {
+    use super::Config;
+    use super::utils;
+
+    pub fn run(config: Config) -> Result<(), &str> {
+        let mut operand_stack: Vec<String> = Vec::new();
+        let mut operator_stack: Vec<(char, i16)> = Vec::new();
+        let mut offset: i16 = 0;
+
+        for it in config.expression().chars() {
+            match utils::char_type(it) {
+                1 => operand_stack.push(String::from(it)),
+                2 => {
+                    if let Err(e) = push_operator(&mut operand_stack, &mut operator_stack, it, offset) {
+                        return Err(e);
+                    }
+                },
+                3 => offset += 10,
+                4 => offset -= 10,
+                5 => {},
+                _ => return Err("Invalid character"),
+            }
+
+            println!("{:?}\t{:?}", operator_stack, operand_stack);
+
+            if offset < 0 {
+                return Err("Parentheses do not match!");
+            }
+
+        }
+
+        if offset > 0 {
+            return Err("Parentheses do not match!");
+        }
+
+        if operand_stack.len() != 1 {
+            return Err("Expression lacks an operator!");
+        }
+
+        if operator_stack.len() > 2 {
+            return Err("Expression lacks variables");
+        }
+
+        Ok(())
+    }
+
+    fn push_operator<'a>(operand_stack: &mut Vec<String>, operator_stack: &mut Vec<(char, i16)>, 
+                        it: char, offset: i16) -> Result<(), &'a str> {
+        
+        let it_priority = utils::operator_priority(it, offset);
+        if operator_stack.is_empty() {
+            operator_stack.push((it, it_priority));
+            return Ok(());
+        }
+
+        let (last_op, last_pr) = operator_stack.last().unwrap();
+        if *last_pr < it_priority {
+            operator_stack.push((it, it_priority));
+            return Ok(());
+        
+        } else if !operand_stack.is_empty(){
+            let last_var = operand_stack.pop().unwrap();
+            let pre_last = &mut operand_stack.last().unwrap();
+            let last_index = operand_stack.len() - 1;
+
+            if offset == 10 {
+                operand_stack[last_index] = format!("({}{}{})", pre_last, last_op, last_var);
+            
+            } else {
+                operand_stack[last_index] = format!("{}{}{}", pre_last, last_op, last_var);
+            }
+
+            return push_operator(operand_stack, operator_stack, it, offset);
+        
+        } else {
+            Err("Something")
         }
     }
 
 }
 
-fn validate_expression(expr: &str) -> Result<(), &str> {
-    if expr.len() < 3 {
-        return Err("The expression must have at least 3 members!");
-    }
-
-    let mut it = expr.chars();
-    let mut curent = it.next();
-    let mut next = it.next();
-
-    let mut c1: char;
-    let mut c2: char;
-
-    while next != None {
-        c1 = curent.unwrap_or('`');
-        c2 = next.unwrap_or('`');
-
-        if c1 == '`' || c2 == '`' {
-            return Err("Iteration error!");
+mod utils {
+    pub fn char_type(ch: char) -> u8 {
+        if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
+            return 1;
         }
-
-        if !good_neighbors(c1, c2) {
-            return Err("There are bad neighbors in your expression!");
+        if ch == '+' || ch == '-' || ch == '*' || ch == '/' {
+            return 2;
         }
-
-        curent = next;
-        next = it.next();
-    }
-
-    Ok(())
-}
-
-fn good_neighbors(c1: char, c2: char) -> bool {
-    let t1 = char_type(c1);
-    let t2 = char_type(c2);
-    return match t1 {
-        1 => match t2 {
-            2 => true,
-            4 => true,
-            _ => false,
+        if ch == '(' {
+            return 3;
         }
-        2 => match t2 {
-            1 => true,
-            3 => true,
-            _ => false,
+        if ch == ')' {
+            return 4;
         }
-        3 => match t2 {
-            1 => true,
-            3 => true,
-            _ => false,
+        if ch == '#' {
+            return 5
         }
-        4 => match t2 {
-            2 => true,
-            _ => false,
-        }
-        _ => false,
-    }
-}
-
-fn char_type(c: char) -> u8 {
-    if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
-        return 1;
-    }
-    if c == '+' || c == '-' || c == '*' || c == '/' {
-        return 2;
-    }
-    if c == '(' {
-        return 3;
-    }
-    if c == ')' {
-        return 4;
+    
+        0
     }
 
-    0
-}
-
-fn get_alg_type(alg_type: &str) -> AlgType {
-    match alg_type {
-        "TwoStacks" => AlgType::TwoStacks,
-        "Polish" => AlgType::Polish,
-        _ => AlgType::TwoStacks,
+    pub fn operator_priority(op: char, offset: i16) -> i16 {
+        return match op {
+            '+' => 1 + offset,
+            '-' => 1 + offset,
+            '*' => 2 + offset,
+            '/' => 2 + offset,
+            _ => 0,
+        };
     }
+
 }
 
 mod tests {
     use super::*;
-
-    #[test]
-    fn short_expression() {
-        let expr = String::from("a+");
-        assert_ne!(Ok(()), validate_expression(&expr));
-    }
-
-    #[test]
-    fn empty_expression() {
-        let expr = String::from("");
-        assert_ne!(Ok(()), validate_expression(&expr));
-    }
-
-    #[test]
-    fn incorect_expression1() {
-        let expr = String::from("a+b/c+");
-        assert_eq!(Ok(()), validate_expression(&expr));
-    }
-
-    #[test]
-    fn incorect_expression2() {
-        let expr = String::from("a+b/c)");
-        assert_eq!(Ok(()), validate_expression(&expr));
-    }
 
     #[test]
     fn char_types() {
@@ -162,18 +174,18 @@ mod tests {
         let c11 = '(';
         let c12 = ')';
 
-        assert_eq!(char_type(c1), 0);
-        assert_eq!(char_type(c2), 0);
-        assert_eq!(char_type(c3), 1);
-        assert_eq!(char_type(c4), 1);
-        assert_eq!(char_type(c5), 1);
-        assert_eq!(char_type(c6), 1);
-        assert_eq!(char_type(c7), 2);
-        assert_eq!(char_type(c8), 2);
-        assert_eq!(char_type(c9), 2);
-        assert_eq!(char_type(c10), 2);
-        assert_eq!(char_type(c11), 3);
-        assert_eq!(char_type(c12), 4);
+        assert_eq!(utils::char_type(c1), 0);
+        assert_eq!(utils::char_type(c2), 0);
+        assert_eq!(utils::char_type(c3), 1);
+        assert_eq!(utils::char_type(c4), 1);
+        assert_eq!(utils::char_type(c5), 1);
+        assert_eq!(utils::char_type(c6), 1);
+        assert_eq!(utils::char_type(c7), 2);
+        assert_eq!(utils::char_type(c8), 2);
+        assert_eq!(utils::char_type(c9), 2);
+        assert_eq!(utils::char_type(c10), 2);
+        assert_eq!(utils::char_type(c11), 3);
+        assert_eq!(utils::char_type(c12), 4);
     }
 
 }
