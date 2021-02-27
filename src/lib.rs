@@ -120,13 +120,22 @@ pub mod two_stacks {
 
     fn evaluate(operand_stack: &mut Vec<String>, operator_stack: &mut Vec<(char, i16)>) {
         let last_var = operand_stack.pop().unwrap();
-        let mut pre_last_var = operand_stack.pop().unwrap();
+        let mut pre_last_var = operand_stack.pop().unwrap(); // it fails if expr lacks an operator. HANDLE IT!
 
-        let (last_op, _) = operator_stack.pop().unwrap();
+        let (last_op, last_pr) = operator_stack.pop().unwrap();
         let op_str = String::from(last_op);
 
         pre_last_var += &op_str.to_owned();
         pre_last_var += &last_var.to_owned();
+
+        if operator_stack.len() > 0 {
+            let (_, pre_last_pr) = operator_stack.last().unwrap();
+            if last_pr - pre_last_pr > 1 {
+                pre_last_var.insert(0, '(');
+                pre_last_var.push(')');
+            }
+        }
+
         operand_stack.push(pre_last_var);
     }
 
