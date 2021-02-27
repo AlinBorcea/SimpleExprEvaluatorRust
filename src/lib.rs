@@ -65,12 +65,17 @@ pub mod two_stacks {
                 _ => return Err("Invalid character"),
             }
 
-            println!("{:?}\t{:?}", operator_stack, operand_stack);
+            println!("{:?}\t\t\t{:?}", operator_stack, operand_stack);
 
             if offset < 0 {
                 return Err("Parentheses do not match!");
             }
 
+        }
+
+        while operator_stack.len() > 0 {
+            evaluate(&mut operand_stack, &mut operator_stack);
+            println!("{:?}\t\t\t{:?}", operator_stack, operand_stack);
         }
 
         if offset > 0 {
@@ -88,7 +93,7 @@ pub mod two_stacks {
         Ok(())
     }
 
-    fn push_operator<'a>(operand_stack: &mut Vec<String>, operator_stack: &mut Vec<(char, i16)>, 
+    fn push_operator<'a>(operand_stack: &mut Vec<String>, operator_stack: &mut Vec<(char, i16)>,
                         it: char, offset: i16) -> Result<(), &'a str> {
         
         let it_priority = utils::operator_priority(it, offset);
@@ -97,28 +102,32 @@ pub mod two_stacks {
             return Ok(());
         }
 
-        let (last_op, last_pr) = operator_stack.last().unwrap();
+        let (_, last_pr) = operator_stack.last().unwrap();
         if *last_pr < it_priority {
             operator_stack.push((it, it_priority));
+            println!("c1");
             return Ok(());
         
-        } else if !operand_stack.is_empty(){
-            let last_var = operand_stack.pop().unwrap();
-            let pre_last = &mut operand_stack.last().unwrap();
-            let last_index = operand_stack.len() - 1;
-
-            if offset == 10 {
-                operand_stack[last_index] = format!("({}{}{})", pre_last, last_op, last_var);
+        } else if !operand_stack.is_empty() && !operator_stack.is_empty() {
             
-            } else {
-                operand_stack[last_index] = format!("{}{}{}", pre_last, last_op, last_var);
-            }
-
+            evaluate(operand_stack, operator_stack);
             return push_operator(operand_stack, operator_stack, it, offset);
         
         } else {
             Err("Something")
         }
+    }
+
+    fn evaluate(operand_stack: &mut Vec<String>, operator_stack: &mut Vec<(char, i16)>) {
+        let last_var = operand_stack.pop().unwrap();
+        let mut pre_last_var = operand_stack.pop().unwrap();
+
+        let (last_op, _) = operator_stack.pop().unwrap();
+        let op_str = String::from(last_op);
+
+        pre_last_var += &op_str.to_owned();
+        pre_last_var += &last_var.to_owned();
+        operand_stack.push(pre_last_var);
     }
 
 }
