@@ -5,28 +5,34 @@ pub struct Config<'a> {
 }
 
 impl<'a> Config<'a> {
-    pub fn new(args: &mut Vec<String>) -> Result<Config, &str> {
-        if args.len() < 3 {
-            return Err("Two CLI arguments are needed: Expression AlgType");
+    /// Config::new(&Vec<String>)creates a new Config with the CLI arguments.
+    /// 
+    /// One argument is required, the expression.
+    /// 
+    /// The second argument is the algorithm to be used and it has a default value of "TwoStacks".
+    /// 
+    /// Config::new(&Vec<String>) returns a result: a Config struct or an error message.
+    pub fn new(args: &Vec<String>) -> Result<Config, &str> {
+        if args.len() < 2 {
+            return Err("One CLI argument is required: Expression");
         }
         if args[1].len() < 3 {
             return Err("The expression must have at least 3 members!");
         }
 
-        args[1].insert(0, '#');
-        args[1].push('#');
-
         let expr = &args[1];
         let alg: &str;
 
-        if args[2] == "TwoStacks" {
-            alg = &args[2];
-        
-        } else if args[2] == "Polish" {
-            alg = &args[2];
+        if args.len() < 3 {
+            alg = "TwoStacks";
         
         } else {
-            alg = "TwoStacks";
+            if args[2] == "Polish" {
+                alg = &args[2];
+        
+            } else {
+                alg = "TwoStacks";
+            }
         }
 
         Ok(Config { expr, alg })
@@ -43,12 +49,31 @@ impl<'a> Config<'a> {
 }
 
 pub mod two_stacks {
+    use std::process;
+
     use super::Config;
     use super::utils;
 
-    pub fn run(config: Config) -> Result<(), &str> {
+    struct Operator {
+        symbol: char,
+        priority: i16,
+    }
+
+    impl Operator {
+        fn print_operator(&self) {
+            print!("{}{}, ", self.symbol, self.priority);
+        }
+    }
+
+    fn print_operator_stack(stack: &Vec<Operator>) {
+        for it in stack.iter() {
+            it.print_operator();
+        }
+    }
+
+    pub fn run<'a>(config: &Config) -> Result<(), &'a str> {
         let mut operand_stack: Vec<String> = Vec::new();
-        let mut operator_stack: Vec<(char, i16)> = Vec::new();
+        let mut operator_stack: Vec<Operator> = Vec::new();
         let mut offset: i16 = 0;
 
         for it in config.expression().chars() {
@@ -61,11 +86,11 @@ pub mod two_stacks {
                 },
                 3 => offset += 10,
                 4 => offset -= 10,
-                5 => {},
                 _ => return Err("Invalid character"),
             }
 
-            println!("{:?}\t\t\t{:?}", operator_stack, operand_stack);
+            print_operator_stack(&operator_stack);
+            println!("\t\t{:?}", operand_stack);
 
             if offset < 0 {
                 return Err("Parentheses do not match!");
@@ -74,8 +99,11 @@ pub mod two_stacks {
         }
 
         while operator_stack.len() > 0 {
-            evaluate(&mut operand_stack, &mut operator_stack);
-            println!("{:?}\t\t\t{:?}", operator_stack, operand_stack);
+            if let Err(e) = evaluate(&mut operand_stack, &mut operator_stack) {
+                return Err(e);
+            }
+            print_operator_stack(&operator_stack);
+            println!("\t\t{:?}", operand_stack);
         }
 
         if offset > 0 {
@@ -83,60 +111,78 @@ pub mod two_stacks {
         }
 
         if operand_stack.len() != 1 {
-            return Err("Expression lacks an operator!");
+            return Err("Expression lacks an operator");
         }
 
-        if operator_stack.len() > 2 {
+        if operator_stack.len() > 0 {
             return Err("Expression lacks variables");
+        }
+
+        if  operand_stack[0] != config.expr {
+            return Err("The expression is unordered");
         }
 
         Ok(())
     }
 
-    fn push_operator<'a>(operand_stack: &mut Vec<String>, operator_stack: &mut Vec<(char, i16)>,
+    fn push_operator<'a>(operand_stack: &mut Vec<String>, operator_stack: &mut Vec<Operator>,
                         it: char, offset: i16) -> Result<(), &'a str> {
         
-        let it_priority = utils::operator_priority(it, offset);
+        let operator = Operator { symbol: it, priority: utils::operator_priority(it, offset) };
+
         if operator_stack.is_empty() {
-            operator_stack.push((it, it_priority));
+            operator_stack.push(operator);
             return Ok(());
         }
 
-        let (_, last_pr) = operator_stack.last().unwrap();
-        if *last_pr < it_priority {
-            operator_stack.push((it, it_priority));
-            println!("c1");
+        let last_operator = operator_stack.last().unwrap();
+
+        if last_operator.priority < operator.priority {
+            operator_stack.push(operator);
             return Ok(());
         
         } else if !operand_stack.is_empty() && !operator_stack.is_empty() {
             
-            evaluate(operand_stack, operator_stack);
+            if let Err(e) = evaluate(operand_stack, operator_stack) {
+                return Err(e);
+            }
             return push_operator(operand_stack, operator_stack, it, offset);
         
         } else {
-            Err("Something")
+            Err("Error pushing operator")
         }
     }
 
-    fn evaluate(operand_stack: &mut Vec<String>, operator_stack: &mut Vec<(char, i16)>) {
-        let last_var = operand_stack.pop().unwrap();
-        let mut pre_last_var = operand_stack.pop().unwrap(); // it fails if expr lacks an operator. HANDLE IT!
+    fn evaluate<'a>(operand_stack: &mut Vec<String>, operator_stack: &mut Vec<Operator>) -> Result<(), &'a str> {
+        let empty_operand_clo = || { 
+            println!("Expression lacks an operator");
+            process::exit(3);
+        };
 
-        let (last_op, last_pr) = operator_stack.pop().unwrap();
-        let op_str = String::from(last_op);
+        let empty_operator_clo = || { 
+            println!("Expression lacks a variable");
+            process::exit(3);
+        };
+        
+        let last_var = operand_stack.pop().unwrap_or_else(empty_operand_clo);
+        let mut pre_last_var = operand_stack.pop().unwrap_or_else(empty_operand_clo);
+
+        let operator = operator_stack.pop().unwrap_or_else(empty_operator_clo);
+        let op_str = String::from(operator.symbol);
 
         pre_last_var += &op_str.to_owned();
         pre_last_var += &last_var.to_owned();
 
         if operator_stack.len() > 0 {
-            let (_, pre_last_pr) = operator_stack.last().unwrap();
-            if last_pr - pre_last_pr > 1 {
+            let last_op = operator_stack.last().unwrap();
+            if operator.priority - last_op.priority > 1 {
                 pre_last_var.insert(0, '(');
                 pre_last_var.push(')');
             }
         }
 
         operand_stack.push(pre_last_var);
+        Ok(())
     }
 
 }
@@ -178,32 +224,103 @@ mod tests {
     use super::*;
 
     #[test]
-    fn char_types() {
-        let c1 = 'Ă';
-        let c2 = '1';
-        let c3 = 'a';
-        let c4 = 't';
-        let c5 = 'A';
-        let c6 = 'G';
-        let c7 = '+';
-        let c8 = '-';
-        let c9 = '/';
-        let c10 = '*';
-        let c11 = '(';
-        let c12 = ')';
+    fn two_stacks1() {
+        let expr = String::from("aaa");
+        let args = vec![String::from(""), expr];
 
-        assert_eq!(utils::char_type(c1), 0);
-        assert_eq!(utils::char_type(c2), 0);
-        assert_eq!(utils::char_type(c3), 1);
-        assert_eq!(utils::char_type(c4), 1);
-        assert_eq!(utils::char_type(c5), 1);
-        assert_eq!(utils::char_type(c6), 1);
-        assert_eq!(utils::char_type(c7), 2);
-        assert_eq!(utils::char_type(c8), 2);
-        assert_eq!(utils::char_type(c9), 2);
-        assert_eq!(utils::char_type(c10), 2);
-        assert_eq!(utils::char_type(c11), 3);
-        assert_eq!(utils::char_type(c12), 4);
+        let cfg = Config::new(&args).unwrap();
+
+        assert_ne!(Ok(()), two_stacks::run(&cfg));
+    }
+
+    #[test]
+    fn two_stacks2() {
+        let expr = String::from("++*");
+        let args = vec![String::from(""), expr];
+
+        let cfg = Config::new(&args).unwrap();
+
+        assert_ne!(Ok(()), two_stacks::run(&cfg));
+    }
+
+    #[test]
+    fn two_stacks3() {
+        let expr = String::from("--a");
+        let args = vec![String::from(""), expr];
+
+        let cfg = Config::new(&args).unwrap();
+
+        assert_ne!(Ok(()), two_stacks::run(&cfg));
+    }
+
+    #[test]
+    fn two_stacks4() {
+        let expr = String::from("ab*");
+        let args = vec![String::from(""), expr];
+
+        let cfg = Config::new(&args).unwrap();
+
+        assert_ne!(Ok(()), two_stacks::run(&cfg));
+    }
+
+    #[test]
+    fn two_stacks5() {
+        let expr = String::from("a(b");
+        let args = vec![String::from(""), expr];
+
+        let cfg = Config::new(&args).unwrap();
+
+        assert_ne!(Ok(()), two_stacks::run(&cfg));
+    }
+
+    #[test]
+    fn two_stacks6() {
+        let expr = String::from("a(b)");
+        let args = vec![String::from(""), expr];
+
+        let cfg = Config::new(&args).unwrap();
+
+        assert_ne!(Ok(()), two_stacks::run(&cfg));
+    }
+
+    #[test]
+    fn two_stacks7() {
+        let expr = String::from("a+(b)");
+        let args = vec![String::from(""), expr];
+
+        let cfg = Config::new(&args).unwrap();
+
+        assert_ne!(Ok(()), two_stacks::run(&cfg));
+    }
+
+    #[test]
+    fn two_stacks8() {
+        let expr = String::from("a*(b)");
+        let args = vec![String::from(""), expr];
+
+        let cfg = Config::new(&args).unwrap();
+
+        assert_ne!(Ok(()), two_stacks::run(&cfg));
+    }
+
+    #[test]
+    fn two_stacks9() {
+        let expr = String::from("a+(b*c-d/e)");
+        let args = vec![String::from(""), expr];
+
+        let cfg = Config::new(&args).unwrap();
+
+        assert_eq!(Ok(()), two_stacks::run(&cfg));
+    }
+
+    #[test]
+    fn two_stacks10() {
+        let expr = String::from("a+(b*c-d/e)");
+        let args = vec![String::from(""), expr];
+
+        let cfg = Config::new(&args).unwrap();
+
+        assert_ne!(Ok(()), two_stacks::run(&cfg));
     }
 
 }
